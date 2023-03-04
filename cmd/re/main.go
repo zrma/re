@@ -2,8 +2,9 @@ package main
 
 import (
 	"flag"
+	"os"
 
-	"re/pkg/re"
+	"github.com/zrma/re/pkg/re"
 )
 
 func main() {
@@ -16,5 +17,5 @@ func main() {
 		targetPath = "."
 	}
 
-	re.Run(targetPath)
+	re.Run(targetPath, os.Stdin)
 }

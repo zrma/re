@@ -2,15 +2,21 @@ package re
 
 import (
 	"fmt"
+	"io"
+	"io/fs"
 	"log"
-	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/spf13/afero"
 )
 
-func Run(targetPath string) {
+var FileSystem = afero.NewOsFs()
+
+func Run(targetPath string, reader io.Reader) {
+	targetPath = strings.TrimSuffix(targetPath, "\\")
 	changeExtToLower(targetPath)
 
 	movieExtList := map[string]bool{"avi": true, "mkv": true, "mp4": true}
@@ -21,7 +27,7 @@ func Run(targetPath string) {
 
 	var movies, subtitle []string
 
-	err := filepath.Walk(targetPath, func(path string, info os.FileInfo, err error) error {
+	err := afero.Walk(FileSystem, targetPath, func(path string, info fs.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -83,7 +89,7 @@ func Run(targetPath string) {
 	fmt.Println("Do you want to rename? (y/n)")
 
 	var input string
-	_, _ = fmt.Scanln(&input)
+	_, _ = fmt.Fscanln(reader, &input)
 	if strings.ToLower(input) != "y" {
 		fmt.Printf("Canceled")
 		return
@@ -106,7 +112,7 @@ func changeFiles(rename bool, episodes []string, episodeToMovieMap map[string]st
 			newSubPath := filepath.Join(dir, newSubName)
 
 			if rename {
-				err := os.Rename(sub, newSubPath)
+				err := FileSystem.Rename(sub, newSubPath)
 				if err != nil {
 					log.Fatalln(err)
 				}
@@ -175,7 +181,7 @@ func changeExtToLower(targetPath string) {
 		"srt": true, "ass": true, "smi": true,
 		"SRT": true, "ASS": true, "SMI": true,
 	}
-	err := filepath.Walk(targetPath, func(path string, info os.FileInfo, err error) error {
+	err := afero.Walk(FileSystem, targetPath, func(path string, info fs.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -192,7 +198,7 @@ func changeExtToLower(targetPath string) {
 			if ext != strings.ToLower(ext) {
 				ext = strings.ToLower(ext)
 				newPath := strings.TrimRight(path, filepath.Ext(path)) + "." + ext
-				err := os.Rename(path, newPath)
+				err := FileSystem.Rename(path, newPath)
 				if err != nil {
 					log.Fatalln(err)
 				}
@@ -202,7 +208,7 @@ func changeExtToLower(targetPath string) {
 			if ext != strings.ToLower(ext) {
 				ext = strings.ToLower(ext)
 				newPath := strings.TrimRight(path, filepath.Ext(path)) + "." + ext
-				err := os.Rename(path, newPath)
+				err := FileSystem.Rename(path, newPath)
 				if err != nil {
 					log.Fatalln(err)
 				}
