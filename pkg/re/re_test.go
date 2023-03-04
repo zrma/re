@@ -14,15 +14,19 @@ import (
 )
 
 func TestRun(t *testing.T) {
-	FileSystem = afero.NewMemMapFs()
-	t.Cleanup(func() { FileSystem = afero.NewOsFs() })
-
-	for _, tt := range []struct {
+	testCases := []struct {
 		give string
 	}{
 		{"normal"},
-	} {
+		{"kanokari"},
+		{"isekai"},
+	}
+
+	for _, tt := range testCases {
 		t.Run(tt.give, func(t *testing.T) {
+			FileSystem = afero.NewMemMapFs()
+			defer func() { FileSystem = afero.NewOsFs() }()
+
 			testDataPath := filepath.Join("testdata", tt.give+".csv")
 			testData := readTestData(t, testDataPath)
 

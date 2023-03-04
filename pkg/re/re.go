@@ -123,20 +123,6 @@ func changeFiles(rename bool, episodes []string, episodeToMovieMap map[string]st
 	}
 }
 
-func episodeFromMovie(fileName string) string {
-	if strings.Contains(fileName, "OAD") {
-		return "OAD"
-	}
-
-	regex := regexp.MustCompile(`- \d{2} (END |)\(`)
-	episode := regex.FindString(fileName)
-	episode = strings.TrimLeft(episode, "- ")
-	episode = strings.TrimRight(episode, " (")
-	episode = strings.TrimRight(episode, " END")
-	episode = strings.Trim(episode, " ")
-	return episode
-}
-
 func episodeFromSubtitle(name string) string {
 	if strings.Contains(name, "OAD") {
 		return "OAD"
