@@ -1,4 +1,4 @@
-package re
+package test
 
 import (
 	"encoding/csv"
@@ -11,9 +11,12 @@ import (
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/zrma/re/pkg/re"
 )
 
 func TestRun(t *testing.T) {
+	//goland:noinspection SpellCheckingInspection
 	testCases := []struct {
 		give string
 	}{
@@ -24,8 +27,8 @@ func TestRun(t *testing.T) {
 
 	for _, tt := range testCases {
 		t.Run(tt.give, func(t *testing.T) {
-			FileSystem = afero.NewMemMapFs()
-			defer func() { FileSystem = afero.NewOsFs() }()
+			re.FileSystem = afero.NewMemMapFs()
+			defer func() { re.FileSystem = afero.NewOsFs() }()
 
 			testDataPath := filepath.Join("testdata", tt.give+".csv")
 			testData := readTestData(t, testDataPath)
@@ -34,24 +37,24 @@ func TestRun(t *testing.T) {
 
 			setup(t, basePath, testData)
 
-			Run(basePath, strings.NewReader("Y\n"))
+			re.Run(basePath, strings.NewReader("Y\n"))
 
 			for _, datum := range testData {
-				f0, err := FileSystem.Open(filepath.Join(basePath, datum.wantSubtitle))
+				f0, err := re.FileSystem.Open(filepath.Join(basePath, datum.wantSubtitle))
 				require.NoError(t, err, datum.wantSubtitle)
 
 				content, err := afero.ReadAll(f0)
 				assert.NoError(t, err)
 				assert.Equal(t, datum.content, string(content))
 
-				f1, err := FileSystem.Open(filepath.Join(basePath, datum.giveMovie))
+				f1, err := re.FileSystem.Open(filepath.Join(basePath, datum.giveMovie))
 				require.NoError(t, err)
 
 				content, err = afero.ReadAll(f1)
 				assert.NoError(t, err)
 				assert.Equal(t, datum.content, string(content))
 
-				f2, err := FileSystem.Open(filepath.Join(basePath, datum.giveSubtitle))
+				f2, err := re.FileSystem.Open(filepath.Join(basePath, datum.giveSubtitle))
 				assert.Error(t, err, datum.giveSubtitle)
 				assert.Contains(t, err.Error(), os.ErrNotExist.Error())
 				assert.Nil(t, f2)
@@ -96,10 +99,10 @@ type testDatum struct {
 
 func setup(t *testing.T, prefix string, testData []testDatum) {
 	for _, datum := range testData {
-		err := afero.WriteFile(FileSystem, filepath.Join(prefix, datum.giveMovie), []byte(datum.content), 0644)
+		err := afero.WriteFile(re.FileSystem, filepath.Join(prefix, datum.giveMovie), []byte(datum.content), 0644)
 		require.NoError(t, err)
 
-		err = afero.WriteFile(FileSystem, filepath.Join(prefix, datum.giveSubtitle), []byte(datum.content), 0644)
+		err = afero.WriteFile(re.FileSystem, filepath.Join(prefix, datum.giveSubtitle), []byte(datum.content), 0644)
 		require.NoError(t, err)
 	}
 }
