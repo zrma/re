@@ -6,7 +6,6 @@ import (
 	"io/fs"
 	"log"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 
@@ -58,7 +57,7 @@ func Run(targetPath string, reader io.Reader) {
 	for _, movie := range movies {
 		fileName := filepath.Base(movie)
 		fileName = strings.TrimRight(fileName, filepath.Ext(fileName))
-		episode := episodeFromMovie(fileName)
+		episode := extractEpisode(fileName)
 		if episode == "" {
 			log.Println("[mov] episode is empty", movie)
 			continue
@@ -69,7 +68,7 @@ func Run(targetPath string, reader io.Reader) {
 
 	for _, sub := range subtitle {
 		fileName := filepath.Base(sub)
-		episode := episodeFromSubtitle(fileName)
+		episode := extractEpisode(fileName)
 		if episode == "" {
 			log.Println("[sub] episode is empty", sub)
 			continue
@@ -121,49 +120,6 @@ func changeFiles(rename bool, episodes []string, episodeToMovieMap map[string]st
 			}
 		}
 	}
-}
-
-func episodeFromSubtitle(name string) string {
-	if strings.Contains(name, "OAD") {
-		return "OAD"
-	}
-
-	seasonTypeRegex := regexp.MustCompile(`S\d{2}E\d{2}`)
-	seasonTypeName := seasonTypeRegex.FindString(name)
-	if seasonTypeName != "" {
-		seasonTypeName = seasonTypeName[4:]
-		return seasonTypeName
-	}
-
-	movieLikedTypeRegex := regexp.MustCompile(`\d{2} (END |)\(`)
-	movieLikedTypeName := movieLikedTypeRegex.FindString(name)
-	if movieLikedTypeName != "" {
-		movieLikedTypeName = strings.TrimRight(movieLikedTypeName, " (")
-		movieLikedTypeName = strings.TrimRight(movieLikedTypeName, " END")
-		movieLikedTypeName = strings.Trim(movieLikedTypeName, " ")
-		return movieLikedTypeName
-	}
-
-	koreanTypeRegex := regexp.MustCompile(`\d{1,2}화`)
-	koreanTypeName := koreanTypeRegex.FindString(name)
-	if koreanTypeName != "" {
-		koreanTypeName = strings.TrimRight(koreanTypeName, "화")
-		koreanTypeName = strings.Trim(koreanTypeName, " ")
-
-		if len(koreanTypeName) == 1 {
-			koreanTypeName = "0" + koreanTypeName
-		}
-		return koreanTypeName
-	}
-
-	endWithTypeRegex := regexp.MustCompile(`\d{2}\.`)
-	endWithTypeName := endWithTypeRegex.FindString(name)
-	if endWithTypeName != "" {
-		endWithTypeName = strings.TrimRight(endWithTypeName, ".")
-		endWithTypeName = strings.Trim(endWithTypeName, " ")
-		return endWithTypeName
-	}
-	return ""
 }
 
 func changeExtToLower(targetPath string) {
