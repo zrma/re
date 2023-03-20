@@ -10,6 +10,7 @@ func extractEpisode(fileName string) string {
 		parseSeasonUnderscore,
 		parseKorean,
 		parseEndWith,
+		parseRAW,
 	)
 }
 

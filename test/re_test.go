@@ -23,6 +23,7 @@ func TestRun(t *testing.T) {
 		{"normal"},
 		{"kanokari"},
 		{"isekai"},
+		{"eureka_ao"},
 	}
 
 	for _, tt := range testCases {

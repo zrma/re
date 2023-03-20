@@ -48,3 +48,12 @@ func parseKorean(name string) string {
 	}
 	return episode
 }
+
+func parseRAW(name string) string {
+	regex := regexp.MustCompile(`- \d{2} RAW`)
+	episode := regex.FindString(name)
+	episode = strings.TrimLeft(episode, "- ")
+	episode = strings.TrimRight(episode, " RAW")
+	episode = strings.Trim(episode, " ")
+	return episode
+}
