@@ -6,6 +6,9 @@ func extractEpisode(fileName string) string {
 	return extractChain(
 		fileName,
 		parseOAD,
+		parseEpisode,
+		parseSeasonX,
+		parseKanji,
 		parseDashBrace,
 		parseSeasonUnderscore,
 		parseKorean,

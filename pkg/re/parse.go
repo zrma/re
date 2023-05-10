@@ -12,7 +12,7 @@ func parseOAD(name string) string {
 }
 
 func parseDashBrace(name string) string {
-	regex := regexp.MustCompile(`- \d{2} (END |)\(`)
+	regex := regexp.MustCompile(`- \d{2} (END |)?\(`)
 	episode := regex.FindString(name)
 	episode = strings.TrimLeft(episode, "- ")
 	episode = strings.TrimRight(episode, " (")
@@ -28,6 +28,16 @@ func parseSeasonUnderscore(name string) string {
 		return ""
 	}
 	return episode[5:]
+}
+
+func parseSeasonX(name string) string {
+	regex := regexp.MustCompile(` \d{1}x\d{2}`)
+	episode := regex.FindString(name)
+	episode = strings.TrimLeft(episode, " ")
+	if episode == "" {
+		return ""
+	}
+	return episode[2:]
 }
 
 func parseEndWith(name string) string {
@@ -55,5 +65,20 @@ func parseRAW(name string) string {
 	episode = strings.TrimLeft(episode, "- ")
 	episode = strings.TrimRight(episode, " RAW")
 	episode = strings.Trim(episode, " ")
+	return episode
+}
+
+func parseEpisode(name string) string {
+	regex := regexp.MustCompile(` E\d{2}`)
+	episode := regex.FindString(name)
+	episode = strings.TrimLeft(episode, " E")
+	return episode
+}
+
+func parseKanji(name string) string {
+	regex := regexp.MustCompile(`第\d{2}話`)
+	episode := regex.FindString(name)
+	episode = strings.TrimLeft(episode, "第")
+	episode = strings.TrimRight(episode, "話")
 	return episode
 }
