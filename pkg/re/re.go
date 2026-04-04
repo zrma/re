@@ -4,13 +4,10 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/spf13/afero"
 )
 
 var FileSystem = newOSFileSystem()
@@ -28,7 +25,6 @@ func RunWithOptions(targetPath string, reader io.Reader, writer io.Writer, optio
 	}
 
 	targetPath = normalizeTargetPath(targetPath)
-	changeExtToLower(targetPath)
 
 	scanResult, err := ScanDirectory(targetPath)
 	if err != nil {
@@ -36,9 +32,10 @@ func RunWithOptions(targetPath string, reader io.Reader, writer io.Writer, optio
 	}
 
 	resolution := ResolveByRule(scanResult)
-	plan := BuildRenamePlan(resolution)
+	plan := EnforceSafeRenamePlan(BuildRenamePlan(resolution), scanResult)
+	unresolvedCandidates := CollectAICandidateSubtitles(scanResult, resolution, plan)
 
-	if options.AI.Enabled && len(resolution.UnresolvedSubtitles) > 0 {
+	if options.AI.Enabled && len(unresolvedCandidates) > 0 {
 		resolver := options.AI.Resolver
 		if resolver == nil {
 			resolver = CodexExecResolver{
@@ -54,20 +51,35 @@ func RunWithOptions(targetPath string, reader io.Reader, writer io.Writer, optio
 		}
 		defer cancel()
 
-		aiInput := BuildAIInput(targetPath, scanResult, resolution, plan)
+		aiInput := BuildAIInput(targetPath, scanResult, plan, unresolvedCandidates)
 		aiOutput, err := resolver.Resolve(ctx, aiInput)
 		if err != nil {
 			log.Printf("[ai] fallback failed: %v", err)
 		} else {
-			plan = MergeAIRenamePlan(plan, scanResult, resolution.UnresolvedSubtitles, aiOutput, options.AI.MinConfidence)
+			plan = MergeAIRenamePlan(plan, scanResult, unresolvedCandidates, aiOutput, options.AI.MinConfidence)
+			plan = EnforceSafeRenamePlan(plan, scanResult)
 		}
 	}
 
-	report := BuildRunReport(targetPath, scanResult, resolution, plan, false, !options.AssumeYes)
+	requiresConfirmation := !options.AssumeYes && len(plan.Operations) > 0
+	report := BuildRunReport(targetPath, scanResult, resolution, plan, false, requiresConfirmation)
 
 	if options.OutputFormat == OutputFormatText {
 		PreviewRenamePlan(writer, plan)
 		PrintTextSummary(writer, report)
+	}
+
+	if len(plan.Operations) == 0 {
+		if options.OutputFormat == OutputFormatJSON {
+			if err := WriteJSONReport(writer, report); err != nil {
+				log.Fatalln(err)
+			}
+			return
+		}
+		if options.AssumeYes && len(plan.Skips) == 0 {
+			fmt.Fprintln(writer, "Done!")
+		}
+		return
 	}
 
 	if options.AssumeYes {
@@ -94,20 +106,22 @@ func RunWithOptions(targetPath string, reader io.Reader, writer io.Writer, optio
 	var input string
 	_, _ = fmt.Fscanln(reader, &input)
 	if strings.ToLower(input) != "y" {
+		report = BuildCanceledRunReport(targetPath, scanResult, resolution, plan)
 		if options.OutputFormat == OutputFormatJSON {
 			if err := WriteJSONReport(writer, report); err != nil {
 				log.Fatalln(err)
 			}
 			return
 		}
-		fmt.Fprint(writer, "Canceled")
+		fmt.Fprintln(writer, "Canceled")
+		PrintTextSummary(writer, report)
 		return
 	}
 
 	if err := ApplyRenamePlan(plan); err != nil {
 		log.Fatalln(err)
 	}
-	report = BuildRunReport(targetPath, scanResult, resolution, plan, true, true)
+	report = BuildRunReport(targetPath, scanResult, resolution, plan, true, false)
 	if options.OutputFormat == OutputFormatJSON {
 		if err := WriteJSONReport(writer, report); err != nil {
 			log.Fatalln(err)
@@ -118,54 +132,8 @@ func RunWithOptions(targetPath string, reader io.Reader, writer io.Writer, optio
 }
 
 func normalizeTargetPath(targetPath string) string {
-	return strings.TrimSuffix(targetPath, "\\")
-}
-
-func changeExtToLower(targetPath string) {
-	movieExtList := map[string]bool{
-		"avi": true, "mkv": true, "mp4": true,
-		"AVI": true, "MKV": true, "MP4": true,
+	if targetPath == "" {
+		return "."
 	}
-	subtitleExtList := map[string]bool{
-		"srt": true, "ass": true, "smi": true,
-		"SRT": true, "ASS": true, "SMI": true,
-	}
-	err := afero.Walk(FileSystem, targetPath, func(path string, info fs.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.IsDir() {
-			return nil
-		}
-		if filepath.Dir(path) != targetPath {
-			return nil
-		}
-
-		ext := filepath.Ext(path)
-		ext = ext[1:]
-		if movieExtList[ext] {
-			if ext != strings.ToLower(ext) {
-				ext = strings.ToLower(ext)
-				newPath := strings.TrimSuffix(path, filepath.Ext(path)) + "." + ext
-				err := FileSystem.Rename(path, newPath)
-				if err != nil {
-					log.Fatalln(err)
-				}
-			}
-		}
-		if subtitleExtList[ext] {
-			if ext != strings.ToLower(ext) {
-				ext = strings.ToLower(ext)
-				newPath := strings.TrimSuffix(path, filepath.Ext(path)) + "." + ext
-				err := FileSystem.Rename(path, newPath)
-				if err != nil {
-					log.Fatalln(err)
-				}
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		log.Fatalln(err)
-	}
+	return filepath.Clean(targetPath)
 }

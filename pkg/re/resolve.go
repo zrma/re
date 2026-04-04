@@ -1,29 +1,46 @@
 package re
 
-import (
-	"log"
-	"sort"
-)
+import "sort"
 
 type ResolutionResult struct {
-	Episodes            []string
-	MoviesByEpisode     map[string]MediaFile
-	SubtitlesByEpisode  map[string][]MediaFile
-	UnresolvedMovies    []MediaFile
-	UnresolvedSubtitles []MediaFile
+	Episodes               []string
+	MoviesByEpisode        map[string]MediaFile
+	AmbiguousMovieEpisodes map[string]bool
+	SubtitlesByEpisode     map[string][]MediaFile
+	UnresolvedMovies       []MediaFile
+	UnresolvedSubtitles    []MediaFile
 }
 
 func ResolveByRule(scanResult ScanResult) ResolutionResult {
 	result := ResolutionResult{
-		MoviesByEpisode:    map[string]MediaFile{},
-		SubtitlesByEpisode: map[string][]MediaFile{},
+		MoviesByEpisode:        map[string]MediaFile{},
+		AmbiguousMovieEpisodes: map[string]bool{},
+		SubtitlesByEpisode:     map[string][]MediaFile{},
+	}
+	unresolvedMoviePaths := map[string]bool{}
+	appendUnresolvedMovie := func(movie MediaFile) {
+		if unresolvedMoviePaths[movie.Path] {
+			return
+		}
+		result.UnresolvedMovies = append(result.UnresolvedMovies, movie)
+		unresolvedMoviePaths[movie.Path] = true
 	}
 
 	for _, movie := range scanResult.Movies {
-		episode := extractEpisode(movie.BaseName)
+		episode := extractEpisode(movie.Name)
 		if episode == "" {
-			log.Println("[mov] episode is empty", movie.Name)
-			result.UnresolvedMovies = append(result.UnresolvedMovies, movie)
+			appendUnresolvedMovie(movie)
+			continue
+		}
+		if result.AmbiguousMovieEpisodes[episode] {
+			appendUnresolvedMovie(movie)
+			continue
+		}
+		if existing, ok := result.MoviesByEpisode[episode]; ok {
+			appendUnresolvedMovie(existing)
+			appendUnresolvedMovie(movie)
+			delete(result.MoviesByEpisode, episode)
+			result.AmbiguousMovieEpisodes[episode] = true
 			continue
 		}
 		result.MoviesByEpisode[episode] = movie
@@ -32,7 +49,6 @@ func ResolveByRule(scanResult ScanResult) ResolutionResult {
 	for _, sub := range scanResult.Subtitles {
 		episode := extractEpisode(sub.Name)
 		if episode == "" {
-			log.Println("[sub] episode is empty", sub.Path)
 			result.UnresolvedSubtitles = append(result.UnresolvedSubtitles, sub)
 			continue
 		}
@@ -47,4 +63,27 @@ func ResolveByRule(scanResult ScanResult) ResolutionResult {
 	result.Episodes = episodes
 
 	return result
+}
+
+func unmatchedSubtitleEpisodes(resolution ResolutionResult) []string {
+	episodes := make([]string, 0, len(resolution.SubtitlesByEpisode))
+	for episode := range resolution.SubtitlesByEpisode {
+		if _, ok := resolution.MoviesByEpisode[episode]; ok {
+			continue
+		}
+		episodes = append(episodes, episode)
+	}
+	sort.Strings(episodes)
+	return episodes
+}
+
+func CollectUnresolvedSubtitles(resolution ResolutionResult) []MediaFile {
+	unresolved := make([]MediaFile, 0, len(resolution.UnresolvedSubtitles))
+	unresolved = append(unresolved, resolution.UnresolvedSubtitles...)
+
+	for _, episode := range unmatchedSubtitleEpisodes(resolution) {
+		unresolved = append(unresolved, resolution.SubtitlesByEpisode[episode]...)
+	}
+
+	return unresolved
 }

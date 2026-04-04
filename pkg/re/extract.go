@@ -1,11 +1,20 @@
 package re
 
+import "regexp"
+
 type extractFunc func(fileName string) string
 
+var nonEpisodeMarkerRegex = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(ncop|nced|op|ed)(?:\d{0,2})?(?:v\d+)?(?:[^a-z0-9]|$)`)
+
 func extractEpisode(fileName string) string {
+	if hasNonEpisodeMarker(fileName) {
+		return ""
+	}
+	if episode := parseOAD(fileName); episode != "" {
+		return episode
+	}
 	return extractChain(
 		fileName,
-		parseOAD,
 		parseEpisode,
 		parseSeasonX,
 		parseKanji,
@@ -25,4 +34,8 @@ func extractChain(fileName string, extractFuncs ...extractFunc) string {
 		}
 	}
 	return ""
+}
+
+func hasNonEpisodeMarker(fileName string) bool {
+	return nonEpisodeMarkerRegex.MatchString(fileName)
 }

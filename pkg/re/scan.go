@@ -1,9 +1,9 @@
 package re
 
 import (
-	"io/fs"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/afero"
@@ -25,8 +25,9 @@ type MediaFile struct {
 }
 
 type ScanResult struct {
-	Movies    []MediaFile
-	Subtitles []MediaFile
+	Movies             []MediaFile
+	Subtitles          []MediaFile
+	TemporaryArtifacts []string
 }
 
 func ScanDirectory(targetPath string) (ScanResult, error) {
@@ -35,43 +36,47 @@ func ScanDirectory(targetPath string) (ScanResult, error) {
 
 	var result ScanResult
 
-	err := afero.Walk(FileSystem, targetPath, func(path string, info fs.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.IsDir() {
-			return nil
-		}
-		if filepath.Dir(path) != targetPath {
-			return nil
+	entries, err := afero.ReadDir(FileSystem, targetPath)
+	if err != nil {
+		return ScanResult{}, err
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
 		}
 
+		path := filepath.Join(targetPath, entry.Name())
 		ext := strings.TrimPrefix(filepath.Ext(path), ".")
+		normalizedExt := strings.ToLower(ext)
 		name := filepath.Base(path)
+		if isInternalAliasProbeFile(name) {
+			continue
+		}
+		if isInternalTemporaryRenameFile(name) {
+			result.TemporaryArtifacts = append(result.TemporaryArtifacts, path)
+			continue
+		}
 		baseName := strings.TrimSuffix(name, filepath.Ext(name))
 
-		if movieExtList[ext] {
+		if movieExtList[normalizedExt] {
 			result.Movies = append(result.Movies, MediaFile{
 				Path:      path,
 				Name:      name,
 				BaseName:  baseName,
-				Extension: "." + ext,
+				Extension: "." + normalizedExt,
 				Kind:      MovieKind,
 			})
 		}
-		if subtitleExtList[ext] {
+		if subtitleExtList[normalizedExt] {
 			result.Subtitles = append(result.Subtitles, MediaFile{
 				Path:      path,
 				Name:      name,
 				BaseName:  baseName,
-				Extension: "." + ext,
+				Extension: "." + normalizedExt,
 				Kind:      SubtitleKind,
 			})
 		}
-		return nil
-	})
-	if err != nil {
-		return ScanResult{}, err
 	}
 
 	sort.Slice(result.Movies, func(i, j int) bool {
@@ -82,4 +87,33 @@ func ScanDirectory(targetPath string) (ScanResult, error) {
 	})
 
 	return result, nil
+}
+
+func isInternalAliasProbeFile(name string) bool {
+	return strings.HasPrefix(name, ".re-fs-probe-") && strings.HasSuffix(strings.ToLower(name), ".tmp")
+}
+
+func isInternalTemporaryRenameFile(name string) bool {
+	dotIndex := strings.LastIndex(name, ".")
+	if dotIndex <= 0 {
+		return false
+	}
+
+	baseName := name[:dotIndex]
+	if !strings.HasPrefix(baseName, ".") {
+		return false
+	}
+
+	markerIndex := strings.LastIndex(baseName, ".re-tmp-")
+	if markerIndex <= 0 {
+		return false
+	}
+
+	suffix := baseName[markerIndex+len(".re-tmp-"):]
+	if suffix == "" {
+		return false
+	}
+
+	_, err := strconv.Atoi(suffix)
+	return err == nil
 }

@@ -34,6 +34,39 @@ func TestAIOutputSchemaDisallowsAdditionalProperties(t *testing.T) {
 	}
 }
 
+func TestAIOutputSchemaRequiresStringMatchedMoviePath(t *testing.T) {
+	schema := aiOutputSchema()
+
+	properties, ok := schema["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("root properties must be a map")
+	}
+
+	decisions, ok := properties["decisions"].(map[string]any)
+	if !ok {
+		t.Fatalf("decisions schema must be a map")
+	}
+
+	items, ok := decisions["items"].(map[string]any)
+	if !ok {
+		t.Fatalf("decisions.items schema must be a map")
+	}
+
+	itemProperties, ok := items["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("decision item properties must be a map")
+	}
+
+	matchedMoviePath, ok := itemProperties["matched_movie_path"].(map[string]any)
+	if !ok {
+		t.Fatalf("matched_movie_path schema must be a map")
+	}
+
+	if got, want := matchedMoviePath["type"], "string"; got != want {
+		t.Fatalf("matched_movie_path type = %#v, want %q", got, want)
+	}
+}
+
 func TestSummarizeCodexExecErrorExtractsStructuredAPIMessage(t *testing.T) {
 	stderr := strings.TrimSpace(`
 2026-03-21T14:23:41.477711Z  WARN something noisy

@@ -31,12 +31,12 @@
 
 ## 동작 방식
 
-1. 대상 폴더의 확장자를 먼저 소문자로 정규화합니다.
-   예: `.MKV` -> `.mkv`, `.SRT` -> `.srt`
-2. 대상 폴더의 바로 아래 파일 중 지원하는 영상/자막 파일만 찾습니다.
-3. 각 파일명에서 에피소드 번호를 추출합니다.
-4. 영상 basename을 기준으로 자막의 새 이름을 계산합니다.
-5. 변경 예정 목록을 출력한 뒤 `y`를 입력하면 실제로 rename합니다.
+1. 대상 폴더의 바로 아래 파일 중 지원하는 영상/자막 파일만 찾습니다.
+   확장자는 대소문자를 구분하지 않고 인식합니다.
+2. 각 파일명에서 에피소드 번호를 추출합니다.
+3. 영상 basename을 기준으로 자막의 새 이름을 계산합니다.
+4. 변경 예정 목록을 출력한 뒤 `y`를 입력하면 실제로 rename합니다.
+   rename이 적용될 때 대상 자막 확장자는 지원하는 소문자 형식으로 정규화됩니다.
 
 기본 대상 경로는 현재 디렉터리(`.`)이며, `-t` 옵션으로 다른 경로를 지정할 수 있습니다.
 
@@ -120,8 +120,9 @@ Do you want to rename? (y/n)
 - 하위 디렉터리는 재귀적으로 처리하지 않습니다.
   대상 경로의 바로 아래 파일만 봅니다.
 - 에피소드 번호를 추출하지 못한 파일은 rename하지 않습니다.
-- 같은 에피소드에 대응되는 영상 파일이 여러 개 있으면 마지막으로 선택된 이름이 사용됩니다.
-- 같은 에피소드에 같은 확장자의 자막이 여러 개 있으면 rename 대상 경로가 충돌할 수 있습니다.
+- 같은 에피소드에 대응되는 영상 파일이 여러 개 있으면 모호한 항목으로 보고 관련 자막은 skip합니다.
+- 같은 에피소드에 같은 확장자의 자막이 여러 개 있으면 충돌 위험이 있는 항목은 skip합니다.
+- 에피소드 번호는 읽혔지만 대응되는 영상이 없으면 해당 자막은 skip합니다.
 - 실제 실행 전에 별도 백업을 만들지 않습니다.
 
 ## AI fallback 구상
@@ -129,7 +130,7 @@ Do you want to rename? (y/n)
 rule 기반 매칭으로 처리되지 않는 예외 케이스를 위해, `codex exec`를 보조 판정기로 붙이는 하이브리드 구조를 고려할 수 있습니다.
 
 - 정상 케이스는 기존 deterministic 매칭 유지
-- unresolved 케이스만 AI에 질의
+- rule만으로 확정 적용하지 못한 자막(unresolved/unsafe skip)만 AI에 질의
 - AI는 rename을 직접 하지 않고 추천 매핑안만 반환
 - 최종 rename은 로컬 Go 코드가 안전하게 수행
 
@@ -141,7 +142,7 @@ rule 기반 매칭으로 처리되지 않는 예외 케이스를 위해, `codex 
 go run ./cmd/re -t /path/to/subtitle-folder
 ```
 
-unresolved subtitle에 대해서만 AI 보조 판정을 켜려면:
+rule로 확정 적용하지 못한 subtitle에 대해서만 AI 보조 판정을 켜려면:
 
 ```bash
 go run ./cmd/re \
@@ -159,13 +160,14 @@ go run ./cmd/re \
 /path/to/subtitle-folder/1화.srt -> [BD] Example - 01.srt
 [ai:0.98] /path/to/subtitle-folder/oad-kor.srt -> [BD] Example OAD.srt
 [skip] /path/to/subtitle-folder/commentary-kor.srt (ai requested human review: ambiguous between OAD and TV special)
-Summary: 2 renames (rule 1, ai 1), 1 skips, unresolved movies 0, unresolved subtitles 2
+Summary: 2 renames (rule 1, ai 1), 1 skips, unresolved movies 0, unresolved subtitles 1
 Do you want to rename? (y/n)
 ```
 
 `--yes`를 함께 주면 preview는 유지되지만 확인 프롬프트는 생략됩니다.
 
 `--output json`을 주면 stdout은 구조화된 JSON만 출력합니다. 자동화나 후처리에는 이 모드를 쓰는 편이 좋습니다.
+`status`는 실제 rename이 적용된 경우 `applied`, 사용자가 취소한 경우 `canceled`, 적용할 rename이 없고 skip도 없던 경우 `noop`, rename은 없지만 skip이 있어 수동 확인이 필요한 경우 `needs_review`입니다.
 
 ```json
 {
@@ -181,7 +183,7 @@ Do you want to rename? (y/n)
     "ai_renames": 1,
     "skips": 1,
     "unresolved_movies": 0,
-    "unresolved_subtitles": 2
+    "unresolved_subtitles": 1
   }
 }
 ```

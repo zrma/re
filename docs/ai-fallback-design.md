@@ -5,7 +5,7 @@
 이 프로젝트의 기본 철학은 유지한다.
 
 - 1차 매칭은 지금처럼 deterministic rule 기반으로 처리한다.
-- rule 기반으로 확정할 수 없는 케이스만 AI에 질의한다.
+- rule 기반으로 확정할 수 없거나, 안전 게이트에서 적용 불가로 걸러진 자막만 AI에 질의한다.
 - AI는 실제 rename을 수행하지 않고, "추천 매핑안"만 반환한다.
 - 최종 rename은 로컬 Go 코드가 안전장치를 거쳐 수행한다.
 
@@ -51,7 +51,7 @@
 go run ./cmd/re -t /path/to/folder
 ```
 
-AI fallback을 켜면 unresolved 케이스만 추가 분석한다.
+AI fallback을 켜면 rule만으로 확정 적용하지 못한 케이스만 추가 분석한다.
 
 ```bash
 go run ./cmd/re -t /path/to/folder --ai-fallback
@@ -74,7 +74,7 @@ go run ./cmd/re \
 ## 제안 CLI 옵션
 
 - `--ai-fallback`
-  unresolved 케이스가 있을 때만 AI 보조 매칭을 수행한다.
+  unresolved 또는 안전 게이트에서 걸러진 subtitle이 있을 때만 AI 보조 매칭을 수행한다.
 - `--ai-model`
   `codex exec`에 넘길 모델 이름. 예: `gpt-5.4-mini`
 - `--ai-min-confidence`

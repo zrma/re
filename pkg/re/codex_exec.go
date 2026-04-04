@@ -146,7 +146,7 @@ func aiOutputSchema() map[string]any {
 							},
 						},
 						"matched_movie_path": map[string]any{
-							"type": []string{"string", "null"},
+							"type": "string",
 						},
 						"confidence": map[string]any{
 							"type":    "number",
@@ -170,6 +170,7 @@ If uncertain, choose "skip" or "needs_human".
 Only match a subtitle to an existing movie path from the provided list.
 Prefer precision over recall.
 Use the provided JSON schema.
+Use an empty string for matched_movie_path when outcome is "skip" or "needs_human".
 
 Input JSON:
 `) + "\n" + string(input) + "\n"

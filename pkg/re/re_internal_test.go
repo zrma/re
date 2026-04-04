@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestChangeExtToLowerPreservesBaseName(t *testing.T) {
+func TestScanDirectoryNormalizesSubtitleExtensionToLowercase(t *testing.T) {
 	FileSystem = afero.NewMemMapFs()
 	defer func() { FileSystem = newOSFileSystem() }()
 
@@ -19,11 +19,10 @@ func TestChangeExtToLowerPreservesBaseName(t *testing.T) {
 	err := afero.WriteFile(FileSystem, originalPath, []byte("episode"), 0644)
 	require.NoError(t, err)
 
-	changeExtToLower(basePath)
+	scanResult, err := ScanDirectory(basePath)
+	require.NoError(t, err)
 
-	_, err = FileSystem.Stat(filepath.Join(basePath, "BEST.srt"))
-	assert.NoError(t, err)
-
-	_, err = FileSystem.Stat(filepath.Join(basePath, "BE.srt"))
-	assert.Error(t, err)
+	require.Len(t, scanResult.Subtitles, 1)
+	assert.Equal(t, "BEST", scanResult.Subtitles[0].BaseName)
+	assert.Equal(t, ".srt", scanResult.Subtitles[0].Extension)
 }

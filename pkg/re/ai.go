@@ -3,8 +3,11 @@ package re
 import (
 	"context"
 	"fmt"
+	"math"
 	"path/filepath"
 )
+
+const duplicateAISubtitleDecisionSkipReason = "ai returned multiple decisions for the same subtitle"
 
 type AIResolver interface {
 	Resolve(ctx context.Context, input AIInput) (AIOutput, error)
@@ -57,7 +60,38 @@ type AIOutput struct {
 	Decisions []AIDecision `json:"decisions"`
 }
 
-func BuildAIInput(targetPath string, scanResult ScanResult, resolution ResolutionResult, rulePlan RenamePlan) AIInput {
+func CollectAICandidateSubtitles(scanResult ScanResult, resolution ResolutionResult, plan RenamePlan) []MediaFile {
+	candidates := make([]MediaFile, 0, len(scanResult.Subtitles))
+	seen := map[string]bool{}
+	subtitlesByPath := map[string]MediaFile{}
+	for _, subtitle := range scanResult.Subtitles {
+		subtitlesByPath[subtitle.Path] = subtitle
+	}
+
+	appendCandidate := func(subtitle MediaFile) {
+		if seen[subtitle.Path] {
+			return
+		}
+		candidates = append(candidates, subtitle)
+		seen[subtitle.Path] = true
+	}
+
+	for _, subtitle := range CollectUnresolvedSubtitles(resolution) {
+		appendCandidate(subtitle)
+	}
+
+	for _, skip := range plan.Skips {
+		subtitle, ok := subtitlesByPath[skip.SourcePath]
+		if !ok {
+			continue
+		}
+		appendCandidate(subtitle)
+	}
+
+	return candidates
+}
+
+func BuildAIInput(targetPath string, scanResult ScanResult, rulePlan RenamePlan, unresolvedCandidates []MediaFile) AIInput {
 	movies := make([]AIFile, 0, len(scanResult.Movies))
 	for _, movie := range scanResult.Movies {
 		movies = append(movies, AIFile{
@@ -76,8 +110,8 @@ func BuildAIInput(targetPath string, scanResult ScanResult, resolution Resolutio
 		})
 	}
 
-	unresolvedSubtitles := make([]string, 0, len(resolution.UnresolvedSubtitles))
-	for _, subtitle := range resolution.UnresolvedSubtitles {
+	unresolvedSubtitles := make([]string, 0, len(unresolvedCandidates))
+	for _, subtitle := range unresolvedCandidates {
 		unresolvedSubtitles = append(unresolvedSubtitles, subtitle.Path)
 	}
 
@@ -107,79 +141,110 @@ func BuildAIInput(targetPath string, scanResult ScanResult, resolution Resolutio
 	}
 }
 
-func MergeAIRenamePlan(rulePlan RenamePlan, scanResult ScanResult, unresolvedSubtitles []MediaFile, output AIOutput, minConfidence float64) RenamePlan {
+func MergeAIRenamePlan(rulePlan RenamePlan, scanResult ScanResult, unresolvedCandidates []MediaFile, output AIOutput, minConfidence float64) RenamePlan {
 	merged := RenamePlan{
-		Operations: append([]RenameOperation{}, rulePlan.Operations...),
-		Skips:      nil,
+		Operations:         append([]RenameOperation{}, rulePlan.Operations...),
+		ResolvedMoviePaths: append([]string{}, rulePlan.ResolvedMoviePaths...),
+	}
+	skipBySource := map[string]SkipOperation{}
+	skipOrder := make([]string, 0, len(rulePlan.Skips))
+	for _, skip := range rulePlan.Skips {
+		skipBySource[skip.SourcePath] = skip
+		skipOrder = append(skipOrder, skip.SourcePath)
+	}
+	setSkip := func(sourcePath string, reason string) {
+		if _, ok := skipBySource[sourcePath]; !ok {
+			skipOrder = append(skipOrder, sourcePath)
+		}
+		skipBySource[sourcePath] = SkipOperation{
+			SourcePath: sourcePath,
+			Reason:     reason,
+		}
+	}
+	removeSkip := func(sourcePath string) {
+		delete(skipBySource, sourcePath)
 	}
 
 	moviesByPath := map[string]MediaFile{}
 	for _, movie := range scanResult.Movies {
 		moviesByPath[movie.Path] = movie
 	}
+	resolvedMovieSeen := map[string]bool{}
+	for _, moviePath := range merged.ResolvedMoviePaths {
+		resolvedMovieSeen[moviePath] = true
+	}
+	recordResolvedMovie := func(moviePath string) {
+		if moviePath == "" || resolvedMovieSeen[moviePath] {
+			return
+		}
+		merged.ResolvedMoviePaths = append(merged.ResolvedMoviePaths, moviePath)
+		resolvedMovieSeen[moviePath] = true
+	}
 
 	sourceSeen := map[string]bool{}
 	destinationSeen := map[string]bool{}
 	decisionsBySubtitle := map[string]AIDecision{}
+	duplicateDecisionSubtitles := map[string]bool{}
 	for _, operation := range merged.Operations {
 		sourceSeen[operation.SourcePath] = true
 		destinationSeen[operation.DestinationPath] = true
 	}
 
 	for _, decision := range output.Decisions {
+		if _, ok := decisionsBySubtitle[decision.SubtitlePath]; ok {
+			duplicateDecisionSubtitles[decision.SubtitlePath] = true
+			delete(decisionsBySubtitle, decision.SubtitlePath)
+			continue
+		}
 		decisionsBySubtitle[decision.SubtitlePath] = decision
 	}
 
-	for _, subtitle := range unresolvedSubtitles {
+	for _, subtitle := range unresolvedCandidates {
+		if duplicateDecisionSubtitles[subtitle.Path] {
+			setSkip(subtitle.Path, duplicateAISubtitleDecisionSkipReason)
+			continue
+		}
+
 		decision, ok := decisionsBySubtitle[subtitle.Path]
 		if !ok {
-			merged.Skips = append(merged.Skips, SkipOperation{
-				SourcePath: subtitle.Path,
-				Reason:     ruleSkipReason + "; ai returned no decision",
-			})
 			continue
 		}
 
 		if decision.Outcome != AIDecisionMatch {
-			merged.Skips = append(merged.Skips, SkipOperation{
-				SourcePath: subtitle.Path,
-				Reason:     formatAISkipReason(decision),
-			})
+			setSkip(subtitle.Path, formatAISkipReason(decision))
+			continue
+		}
+
+		if !isValidAIConfidence(decision.Confidence) {
+			setSkip(subtitle.Path, formatInvalidAIConfidenceReason(decision.Confidence))
 			continue
 		}
 
 		if decision.Confidence < minConfidence {
-			merged.Skips = append(merged.Skips, SkipOperation{
-				SourcePath: subtitle.Path,
-				Reason:     fmt.Sprintf("ai confidence %.2f below threshold %.2f", decision.Confidence, minConfidence),
-			})
+			setSkip(subtitle.Path, fmt.Sprintf("ai confidence %.2f below threshold %.2f", decision.Confidence, minConfidence))
 			continue
 		}
 
 		if sourceSeen[subtitle.Path] {
-			merged.Skips = append(merged.Skips, SkipOperation{
-				SourcePath: subtitle.Path,
-				Reason:     "subtitle already scheduled for rename",
-			})
+			setSkip(subtitle.Path, "subtitle already scheduled for rename")
 			continue
 		}
 
 		movie, ok := moviesByPath[decision.MatchedMoviePath]
 		if !ok {
-			merged.Skips = append(merged.Skips, SkipOperation{
-				SourcePath: subtitle.Path,
-				Reason:     "ai returned a movie path that does not exist in scan results",
-			})
+			setSkip(subtitle.Path, "ai returned a movie path that does not exist in scan results")
 			continue
 		}
 
 		destinationName := movie.BaseName + subtitle.Extension
 		destinationPath := filepath.Join(filepath.Dir(subtitle.Path), destinationName)
+		if destinationPath == subtitle.Path {
+			recordResolvedMovie(movie.Path)
+			removeSkip(subtitle.Path)
+			continue
+		}
 		if destinationSeen[destinationPath] {
-			merged.Skips = append(merged.Skips, SkipOperation{
-				SourcePath: subtitle.Path,
-				Reason:     "ai destination conflicts with an existing rename target",
-			})
+			setSkip(subtitle.Path, "ai destination conflicts with an existing rename target")
 			continue
 		}
 
@@ -195,6 +260,16 @@ func MergeAIRenamePlan(rulePlan RenamePlan, scanResult ScanResult, unresolvedSub
 
 		sourceSeen[subtitle.Path] = true
 		destinationSeen[destinationPath] = true
+		removeSkip(subtitle.Path)
+	}
+
+	merged.Skips = make([]SkipOperation, 0, len(skipBySource))
+	for _, sourcePath := range skipOrder {
+		skip, ok := skipBySource[sourcePath]
+		if !ok {
+			continue
+		}
+		merged.Skips = append(merged.Skips, skip)
 	}
 
 	return merged
@@ -211,4 +286,15 @@ func formatAISkipReason(decision AIDecision) string {
 		return "ai skipped this subtitle"
 	}
 	return "ai skipped: " + decision.Reason
+}
+
+func isValidAIConfidence(confidence float64) bool {
+	if math.IsNaN(confidence) || math.IsInf(confidence, 0) {
+		return false
+	}
+	return confidence >= 0 && confidence <= 1
+}
+
+func formatInvalidAIConfidenceReason(confidence float64) string {
+	return fmt.Sprintf("ai returned invalid confidence value: %v", confidence)
 }
