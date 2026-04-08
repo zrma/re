@@ -507,30 +507,6 @@ func pathHasCaseInsensitiveAlias(path string) bool {
 	return isAliasedExistingPath(path, aliasPath)
 }
 
-func pathHasNormalizationInsensitiveAlias(path string) bool {
-	for _, aliasPath := range normalizationVariants(path) {
-		if aliasPath == path {
-			continue
-		}
-		if isAliasedExistingPath(path, aliasPath) {
-			return true
-		}
-	}
-
-	return false
-}
-
-func normalizationVariants(path string) []string {
-	variants := []string{
-		norm.NFC.String(path),
-		norm.NFD.String(path),
-	}
-	if variants[0] == variants[1] {
-		return variants[:1]
-	}
-	return variants
-}
-
 func hasDistinctDirectoryEntries(path string, aliasPath string) bool {
 	entries, err := afero.ReadDir(FileSystem, filepath.Dir(path))
 	if err != nil {
@@ -612,14 +588,14 @@ func isAliasedExistingPath(sourcePath string, destinationPath string) bool {
 func PreviewRenamePlan(writer io.Writer, plan RenamePlan) {
 	for _, operation := range plan.Operations {
 		if operation.MatchSource == "ai" {
-			fmt.Fprintf(writer, "[ai:%.2f] %s -> %s\n", operation.Confidence, operation.SourcePath, operation.DestinationName)
+			_, _ = fmt.Fprintf(writer, "[ai:%.2f] %s -> %s\n", operation.Confidence, operation.SourcePath, operation.DestinationName)
 			continue
 		}
-		fmt.Fprintf(writer, "%s -> %s\n", operation.SourcePath, operation.DestinationName)
+		_, _ = fmt.Fprintf(writer, "%s -> %s\n", operation.SourcePath, operation.DestinationName)
 	}
 
 	for _, skip := range plan.Skips {
-		fmt.Fprintf(writer, "[skip] %s (%s)\n", skip.SourcePath, skip.Reason)
+		_, _ = fmt.Fprintf(writer, "[skip] %s (%s)\n", skip.SourcePath, skip.Reason)
 	}
 }
 

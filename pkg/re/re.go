@@ -77,7 +77,7 @@ func RunWithOptions(targetPath string, reader io.Reader, writer io.Writer, optio
 			return
 		}
 		if options.AssumeYes && len(plan.Skips) == 0 {
-			fmt.Fprintln(writer, "Done!")
+			_, _ = fmt.Fprintln(writer, "Done!")
 		}
 		return
 	}
@@ -93,7 +93,7 @@ func RunWithOptions(targetPath string, reader io.Reader, writer io.Writer, optio
 			}
 			return
 		}
-		fmt.Fprintln(writer, "Done!")
+		_, _ = fmt.Fprintln(writer, "Done!")
 		return
 	}
 
@@ -101,7 +101,7 @@ func RunWithOptions(targetPath string, reader io.Reader, writer io.Writer, optio
 	if options.OutputFormat == OutputFormatJSON {
 		promptWriter = os.Stderr
 	}
-	fmt.Fprintln(promptWriter, "Do you want to rename? (y/n)")
+	_, _ = fmt.Fprintln(promptWriter, "Do you want to rename? (y/n)")
 
 	var input string
 	_, _ = fmt.Fscanln(reader, &input)
@@ -113,7 +113,7 @@ func RunWithOptions(targetPath string, reader io.Reader, writer io.Writer, optio
 			}
 			return
 		}
-		fmt.Fprintln(writer, "Canceled")
+		_, _ = fmt.Fprintln(writer, "Canceled")
 		PrintTextSummary(writer, report)
 		return
 	}
@@ -128,7 +128,7 @@ func RunWithOptions(targetPath string, reader io.Reader, writer io.Writer, optio
 		}
 		return
 	}
-	fmt.Fprintln(writer, "Done!")
+	_, _ = fmt.Fprintln(writer, "Done!")
 }
 
 func normalizeTargetPath(targetPath string) string {

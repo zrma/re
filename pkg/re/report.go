@@ -148,7 +148,7 @@ func countDeferredUnresolvedOperations(plan RenamePlan) int {
 }
 
 func PrintTextSummary(writer io.Writer, report RunReport) {
-	fmt.Fprintf(
+	_, _ = fmt.Fprintf(
 		writer,
 		"Summary: %d renames (rule %d, ai %d), %d skips, unresolved movies %d, unresolved subtitles %d\n",
 		report.Summary.PlannedRenames,
