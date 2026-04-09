@@ -1,12 +1,10 @@
 package re
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"log"
 	"os"
-	"path/filepath"
 	"strings"
 )
 
@@ -20,73 +18,41 @@ func RunWithOptions(targetPath string, reader io.Reader, writer io.Writer, optio
 	if writer == nil {
 		writer = os.Stdout
 	}
-	if !options.OutputFormat.Valid() {
-		log.Fatalf("invalid output format: %s", options.OutputFormat)
-	}
-
-	targetPath = normalizeTargetPath(targetPath)
-
-	scanResult, err := ScanDirectory(targetPath)
+	preview, err := BuildPreview(nil, PreviewRequest{
+		TargetPath: targetPath,
+		Options:    options,
+	})
 	if err != nil {
 		log.Fatalln(err)
 	}
-
-	resolution := ResolveByRule(scanResult)
-	plan := EnforceSafeRenamePlan(BuildRenamePlan(resolution), scanResult)
-	unresolvedCandidates := CollectAICandidateSubtitles(scanResult, resolution, plan)
-
-	if options.AI.Enabled && len(unresolvedCandidates) > 0 {
-		resolver := options.AI.Resolver
-		if resolver == nil {
-			resolver = CodexExecResolver{
-				Model:           options.AI.Model,
-				DebugOutputPath: options.AI.DebugOutputPath,
-			}
-		}
-
-		ctx := context.Background()
-		cancel := func() {}
-		if options.AI.Timeout > 0 {
-			ctx, cancel = context.WithTimeout(ctx, options.AI.Timeout)
-		}
-		defer cancel()
-
-		aiInput := BuildAIInput(targetPath, scanResult, plan, unresolvedCandidates)
-		aiOutput, err := resolver.Resolve(ctx, aiInput)
-		if err != nil {
-			log.Printf("[ai] fallback failed: %v", err)
-		} else {
-			plan = MergeAIRenamePlan(plan, scanResult, unresolvedCandidates, aiOutput, options.AI.MinConfidence)
-			plan = EnforceSafeRenamePlan(plan, scanResult)
-		}
+	for _, warning := range preview.Warnings {
+		log.Printf("[ai] %s", warning)
 	}
-
-	requiresConfirmation := !options.AssumeYes && len(plan.Operations) > 0
-	report := BuildRunReport(targetPath, scanResult, resolution, plan, false, requiresConfirmation)
+	report := preview.Report
 
 	if options.OutputFormat == OutputFormatText {
-		PreviewRenamePlan(writer, plan)
+		PreviewRenamePlan(writer, preview.Plan)
 		PrintTextSummary(writer, report)
 	}
 
-	if len(plan.Operations) == 0 {
+	if len(preview.Plan.Operations) == 0 {
 		if options.OutputFormat == OutputFormatJSON {
 			if err := WriteJSONReport(writer, report); err != nil {
 				log.Fatalln(err)
 			}
 			return
 		}
-		if options.AssumeYes && len(plan.Skips) == 0 {
+		if options.AssumeYes && len(preview.Plan.Skips) == 0 {
 			_, _ = fmt.Fprintln(writer, "Done!")
 		}
 		return
 	}
 
 	if options.AssumeYes {
-		if err := ApplyRenamePlan(plan); err != nil {
+		report, err = ApplyPreview(preview)
+		if err != nil {
 			log.Fatalln(err)
 		}
-		report = BuildRunReport(targetPath, scanResult, resolution, plan, true, false)
 		if options.OutputFormat == OutputFormatJSON {
 			if err := WriteJSONReport(writer, report); err != nil {
 				log.Fatalln(err)
@@ -106,7 +72,7 @@ func RunWithOptions(targetPath string, reader io.Reader, writer io.Writer, optio
 	var input string
 	_, _ = fmt.Fscanln(reader, &input)
 	if strings.ToLower(input) != "y" {
-		report = BuildCanceledRunReport(targetPath, scanResult, resolution, plan)
+		report = BuildCanceledRunReport(preview.TargetPath, preview.ScanResult, preview.Resolution, preview.Plan)
 		if options.OutputFormat == OutputFormatJSON {
 			if err := WriteJSONReport(writer, report); err != nil {
 				log.Fatalln(err)
@@ -118,10 +84,10 @@ func RunWithOptions(targetPath string, reader io.Reader, writer io.Writer, optio
 		return
 	}
 
-	if err := ApplyRenamePlan(plan); err != nil {
+	report, err = ApplyPreview(preview)
+	if err != nil {
 		log.Fatalln(err)
 	}
-	report = BuildRunReport(targetPath, scanResult, resolution, plan, true, false)
 	if options.OutputFormat == OutputFormatJSON {
 		if err := WriteJSONReport(writer, report); err != nil {
 			log.Fatalln(err)
@@ -129,11 +95,4 @@ func RunWithOptions(targetPath string, reader io.Reader, writer io.Writer, optio
 		return
 	}
 	_, _ = fmt.Fprintln(writer, "Done!")
-}
-
-func normalizeTargetPath(targetPath string) string {
-	if targetPath == "" {
-		return "."
-	}
-	return filepath.Clean(targetPath)
 }
