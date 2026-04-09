@@ -218,6 +218,51 @@ debug/re/
 
 자세한 설계는 [`docs/ai-fallback-design.md`](docs/ai-fallback-design.md)를 참고하세요.
 
+## GUI 계획
+
+GUI는 기존 rename 엔진을 대체하는 별도 구현이 아니라, `pkg/re`의 plan과 apply 경계를 재사용하는 얇은 도구형 화면으로 도입하는 편이 안전합니다.
+
+- 첫 단계 우선순위는 "예쁜 UI"보다 "preview와 apply가 같은 plan을 공유하는 것"입니다.
+- 현재 기준으로는 `Wails`보다 `Fyne`가 더 작은 변경으로 안전하게 붙일 수 있는 후보입니다.
+- GUI 도입 전, CLI와 GUI가 함께 쓰는 공용 서비스 계층을 `pkg/re`에 먼저 정리하는 것이 좋습니다.
+
+자세한 계획은 [`docs/gui-plan.md`](docs/gui-plan.md)를 참고하세요.
+
+### GUI 실행
+
+현재는 Fyne 기반 GUI 스켈레톤이 포함되어 있습니다.
+
+```bash
+go run ./cmd/re-gui
+```
+
+바이너리로 직접 빌드하려면:
+
+```bash
+go build -o /tmp/re-gui ./cmd/re-gui
+/tmp/re-gui
+```
+
+GUI에서도 동작 원칙은 CLI와 같습니다.
+
+- 대상 폴더를 고른 뒤 preview를 먼저 생성합니다.
+- 대상 폴더 경로를 직접 붙여넣고 Enter로 preview를 다시 생성할 수 있습니다.
+- 경로나 AI 옵션을 바꾸면 이전 preview는 stale 상태로 보고 다시 생성하기 전까지 적용하지 않습니다.
+- preview 표는 위험도가 높은 AI rename을 먼저 검토할 수 있게 낮은 confidence 순으로 위에 보여줍니다.
+- 긴 파일명은 표의 중간 말줄임과 선택 상세 패널로 함께 확인합니다.
+- 화면은 preview, 상태, skip, 요약을 분리된 섹션과 요약 지표로 나눠 한눈에 읽히게 구성합니다.
+- 실제 rename은 `적용` 버튼과 최종 확인 이후에만 수행합니다.
+- preview 이후 폴더 상태가 바뀌면 apply를 중단하고 새로고침을 요구합니다.
+- rename 규칙과 안전 게이트는 계속 `pkg/re`가 담당합니다.
+
+현재 GUI는 안정성 우선으로 로컬 실행만 지원합니다.
+
+- GitHub release 자산에는 아직 GUI 바이너리를 포함하지 않습니다.
+- Fyne GUI는 로컬 데스크톱 세션을 전제로 하며, headless/SSH-only 환경 실행은 현재 대상이 아닙니다.
+- destination 수동 편집, 행 단위 제외, 백업/undo UI는 아직 없습니다.
+- 먼저 CLI/공용 서비스 경계와 기본 preview/apply 흐름을 안정화하는 것이 목표입니다.
+- 기본 GUI 상태 회귀는 `go test ./...`에 포함된 [`internal/gui/app_test.go`](internal/gui/app_test.go)에서 검증하며, preview refresh/empty state/stale apply rejection/stale error clearing 경로를 포함합니다.
+
 ## 테스트와 예제 데이터
 
 테스트는 CSV fixture 기반으로 여러 naming rule을 검증합니다.
@@ -242,7 +287,10 @@ go test ./...
 ## 코드 구조
 
 - `cmd/re/main.go`: CLI 진입점, `-t`, `--yes`, `--ai-*` 플래그 처리
+- `cmd/re-gui/main.go`: Fyne 기반 GUI 진입점
+- `internal/gui/app.go`: 폴더 선택, preview, skip 목록, apply 흐름을 구성하는 GUI 레이어
 - `pkg/re/re.go`: 실행 오케스트레이션, preview, 확인/적용 흐름 제어
+- `pkg/re/service.go`: CLI/GUI 공용 preview/apply 서비스와 스냅샷 재검증
 - `pkg/re/report.go`: text/json 출력과 요약 통계 생성
 - `pkg/re/scan.go`: 대상 디렉터리 스캔과 파일 분류
 - `pkg/re/resolve.go`: rule 기반 episode 해석과 unresolved 분류
