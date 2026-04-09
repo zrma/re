@@ -387,3 +387,5 @@ $RECYCLE.BIN/
 *.lnk
 
 # End of https://www.toptal.com/developers/gitignore/api/windows,macos,linux,go,jetbrains+all,visualstudiocode,git,python
+/re
+/re-gui
