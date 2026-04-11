@@ -255,9 +255,10 @@ GUI에서도 동작 원칙은 CLI와 같습니다.
 - preview 이후 폴더 상태가 바뀌면 apply를 중단하고 새로고침을 요구합니다.
 - rename 규칙과 안전 게이트는 계속 `pkg/re`가 담당합니다.
 
-현재 GUI는 안정성 우선으로 로컬 실행만 지원합니다.
+현재 GUI는 안정성 우선 기준으로 로컬 실행과 GitHub release 자산 업로드만 지원합니다.
 
-- GitHub release 자산에는 아직 GUI 바이너리를 포함하지 않습니다.
+- release workflow는 기존 CLI `re` 외에 Windows GUI `re-gui-windows-amd64.exe`, macOS GUI zip 자산(`re-gui-darwin-*.zip`)도 함께 업로드합니다.
+- GUI 자산은 코드 서명/notarization 없이 업로드하므로, Windows/macOS에서 실행 시 보안 경고 후 수동 허용이 필요할 수 있습니다.
 - Fyne GUI는 로컬 데스크톱 세션을 전제로 하며, headless/SSH-only 환경 실행은 현재 대상이 아닙니다.
 - destination 수동 편집, 행 단위 제외, 백업/undo UI는 아직 없습니다.
 - 먼저 CLI/공용 서비스 경계와 기본 preview/apply 흐름을 안정화하는 것이 목표입니다.

@@ -5,6 +5,9 @@ on:
   release:
     types: [ published ]
 
+permissions:
+  contents: write
+
 jobs:
   releases-matrix:
     name: Release Go Binary
@@ -30,3 +33,84 @@ jobs:
           project_path: "./cmd/re"
           binary_name: "re"
           # extra_files: LICENSE README.md
+
+  release-gui-windows:
+    name: Release GUI Binary (windows/amd64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: msys2/setup-msys2@v2
+        id: msys2
+        with:
+          update: true
+          msystem: MINGW64
+          install: >-
+            mingw-w64-x86_64-gcc
+      - name: Add MinGW to PATH
+        shell: pwsh
+        run: |
+          "${{ steps.msys2.outputs.msys2-location }}\mingw64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Build Windows GUI binary
+        shell: pwsh
+        env:
+          CGO_ENABLED: "1"
+          CC: gcc
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          go build -trimpath -ldflags="-H windowsgui -s -w" -o dist/re-gui-windows-amd64.exe ./cmd/re-gui
+      - name: Upload Windows GUI asset
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" dist/re-gui-windows-amd64.exe --clobber
+
+  release-gui-macos-arm64:
+    name: Release GUI Binary (darwin/arm64)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build macOS arm64 GUI binary
+        env:
+          CGO_ENABLED: "1"
+          GOARCH: arm64
+        run: |
+          mkdir -p dist
+          go build -trimpath -o dist/re-gui-darwin-arm64 ./cmd/re-gui
+          ditto -c -k --keepParent dist/re-gui-darwin-arm64 dist/re-gui-darwin-arm64.zip
+      - name: Upload macOS arm64 GUI asset
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" dist/re-gui-darwin-arm64.zip --clobber
+
+  release-gui-macos-amd64:
+    name: Release GUI Binary (darwin/amd64)
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build macOS amd64 GUI binary
+        env:
+          CGO_ENABLED: "1"
+          GOARCH: amd64
+        run: |
+          mkdir -p dist
+          go build -trimpath -o dist/re-gui-darwin-amd64 ./cmd/re-gui
+          ditto -c -k --keepParent dist/re-gui-darwin-amd64 dist/re-gui-darwin-amd64.zip
+      - name: Upload macOS amd64 GUI asset
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" dist/re-gui-darwin-amd64.zip --clobber
