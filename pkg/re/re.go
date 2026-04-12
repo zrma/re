@@ -1,6 +1,7 @@
 package re
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -18,7 +19,7 @@ func RunWithOptions(targetPath string, reader io.Reader, writer io.Writer, optio
 	if writer == nil {
 		writer = os.Stdout
 	}
-	preview, err := BuildPreview(nil, PreviewRequest{
+	preview, err := BuildPreview(context.TODO(), PreviewRequest{
 		TargetPath: targetPath,
 		Options:    options,
 	})
