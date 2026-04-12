@@ -175,12 +175,12 @@ func (ui *application) initWidgets() {
 	ui.warningButton.Importance = widget.LowImportance
 	ui.warningBanner = newMessageBanner(
 		theme.WarningIcon(),
-		theme.WarningColor(),
+		theme.Color(theme.ColorNameWarning),
 		container.NewBorder(nil, nil, nil, ui.warningButton, ui.warningLabel),
 	)
 	ui.errorLabel = widget.NewLabel("")
 	ui.errorLabel.Wrapping = fyne.TextWrapWord
-	ui.errorBanner = newMessageBanner(theme.ErrorIcon(), theme.ErrorColor(), ui.errorLabel)
+	ui.errorBanner = newMessageBanner(theme.ErrorIcon(), theme.Color(theme.ColorNameError), ui.errorLabel)
 	ui.summaryLabel = widget.NewLabel("")
 	ui.summaryLabel.Wrapping = fyne.TextWrapWord
 	ui.summaryStatus = newMetricValueLabel()
@@ -368,8 +368,8 @@ func newMetricPanel(title string, value *widget.Label) fyne.CanvasObject {
 	titleLabel := widget.NewLabelWithStyle(title, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	titleLabel.Wrapping = fyne.TextWrapOff
 
-	background := canvas.NewRectangle(withAlpha(theme.InputBackgroundColor(), 255))
-	background.StrokeColor = withAlpha(theme.SeparatorColor(), 180)
+	background := canvas.NewRectangle(withAlpha(theme.Color(theme.ColorNameInputBackground), 255))
+	background.StrokeColor = withAlpha(theme.Color(theme.ColorNameSeparator), 180)
 	background.StrokeWidth = 1
 	background.CornerRadius = 10
 
