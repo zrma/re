@@ -24,16 +24,39 @@ jobs:
             goos: windows
     steps:
       - uses: actions/checkout@v6.0.2
-      - uses: wangyoucao577/go-release-action@v1
+      - uses: actions/setup-go@v6.4.0
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          goos: ${{ matrix.goos }}
-          goarch: ${{ matrix.goarch }}
-          goversion: "https://dl.google.com/go/go1.26.3.linux-amd64.tar.gz"
-          project_path: "./cmd/re"
-          binary_name: "re"
-          overwrite: true
-          # extra_files: LICENSE README.md
+          go-version-file: go.mod
+          cache: true
+      - name: Build and upload CLI asset
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          TAG_NAME: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p dist/pkg
+          binary_name="re"
+          binary_path="dist/pkg/${binary_name}"
+          if [ "${GOOS}" = "windows" ]; then
+            binary_path="${binary_path}.exe"
+          fi
+
+          CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o "${binary_path}" ./cmd/re
+
+          asset_base="re-${TAG_NAME}-${GOOS}-${GOARCH}"
+          if [ "${GOOS}" = "windows" ]; then
+            artifact="dist/${asset_base}.zip"
+            (cd dist/pkg && zip -q "../${asset_base}.zip" "$(basename "${binary_path}")")
+          else
+            artifact="dist/${asset_base}.tar.gz"
+            tar -C dist/pkg -czf "${artifact}" "$(basename "${binary_path}")"
+          fi
+
+          md5sum "${artifact}" > "${artifact}.md5"
+          gh release upload "${TAG_NAME}" "${artifact}" "${artifact}.md5" --clobber
 
   release-gui-windows:
     name: Release GUI Binary (windows/amd64)
